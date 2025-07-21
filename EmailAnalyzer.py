@@ -22,9 +22,11 @@ def get_key_from_file(filename: str) -> str:
 class EmailAnalyzer:
     def __init__(self) -> None:
         self.api_key = get_key_from_file('apikey.json')
+        self.now = datetime.now()
 
     def analyze_email(self, email: Email) -> dict[str, Any]:
         date_sent_timestamp = self.__get_timestamp_from_datetime(email.time_sent)
+        now_timestamp = self.__get_timestamp_from_datetime(self.now)
         client = OpenAI(api_key=self.api_key)
         response = client.responses.parse(
             model="gpt-4.1-nano",
@@ -41,7 +43,7 @@ class EmailAnalyzer:
                 },
                 {
                     'role': 'user',
-                    'content': f'Message sent: "{date_sent_timestamp}" Subject: "{email.subject}" Message: "{email.body}"'
+                    'content': f'Today the date/time is: {now_timestamp} Message sent: "{date_sent_timestamp}" Subject: "{email.subject}" Message: "{email.body}"'
                 }
             ],
             temperature=0

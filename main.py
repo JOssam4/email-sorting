@@ -1,18 +1,22 @@
 from Email import Email
 from EmailAnalyzer import EmailAnalyzer, Priority
+from EmailRetriever import EmailRetriever
+from argparse import ArgumentParser
 
 
-def run() -> None:
-    emails = fetch_emails()
+def run(gmail_api_client_secret_filename: str) -> None:
+    emails = fetch_emails(gmail_api_client_secret_filename)
     [low_priority_emails, medium_priority_emails, high_priority_emails] = process_emails(emails)
 
-    print(low_priority_emails)
-    print(medium_priority_emails)
-    print(high_priority_emails)
+    print(f'{low_priority_emails=}')
+    print(f'{medium_priority_emails=}')
+    print(f'{high_priority_emails=}')
 
 
-def fetch_emails():
-    pass
+def fetch_emails(gmail_api_client_secret_filename: str) -> list[Email]:
+    email_retriever = EmailRetriever(gmail_api_client_secret_filename)
+    emails = email_retriever.retrieve_emails()
+    return emails
 
 
 def process_emails(emails: list[Email]) -> list[list[Email]]:
@@ -36,4 +40,11 @@ def process_emails(emails: list[Email]) -> list[list[Email]]:
 
 
 if __name__ == '__main__':
-    run()
+    parser = ArgumentParser(
+        prog='email-sorter',
+        description='Sorts emails based on urgency',
+    )
+    parser.add_argument('-s', '--secret', help='filename of gmail secrets file', required=True)
+    args = parser.parse_args()
+    secrets_filename = args.secret
+    run(secrets_filename)
