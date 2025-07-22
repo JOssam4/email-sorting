@@ -57,13 +57,14 @@ class EmailRetriever:
             for message in unread_messages.get('messages'):
                 msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
                 message_id = message['id']
+                link = self.__make_url_from_message_id(message_id)
                 timestamp = msg['internalDate'] # unix-like timestamp (milliseconds from 1/1/1970)
                 time_sent = datetime.fromtimestamp(int(timestamp) // 1000)
                 sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'From')
                 subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
                 body_base64 = self.__retrieve_body(msg.get('payload'))
                 body = self.__decode_body(body_base64)
-                email = Email(message_id, time_sent, sent_from, subject, body)
+                email = Email(message_id, link, time_sent, sent_from, subject, body)
                 emails.append(email)
             return emails
 
@@ -106,3 +107,8 @@ class EmailRetriever:
     def __decode_body(body_base64: str) -> str:
         decoded_body = base64.urlsafe_b64decode(body_base64)
         return decoded_body.decode('utf-8')
+
+    @staticmethod
+    def __make_url_from_message_id(message_id: str) -> str:
+        user_id = 'me'
+        return f'https://mail.google.com/mail/u/{user_id}/#all/{message_id}'

@@ -4,6 +4,7 @@ from datetime import datetime
 @dataclass()
 class Email:
     gmail_id: str
+    link: str
     time_sent: datetime
     sent_from: str
     subject: str
