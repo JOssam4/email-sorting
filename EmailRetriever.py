@@ -7,14 +7,21 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from Email import Email
+from typing import Any
+from enum import StrEnum
 
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+class MimeType(StrEnum):
+    TEXT_PLAIN = 'text/plain'
+    TEXT_HTML = 'text/html'
+    MULTIPART_ALTERNATIVE = 'multipart/alternative'
+    MULTIPART_RELATED = 'multipart/related'
 
 
 class EmailRetriever:
     def __init__(self, gmail_api_client_secret_filename: str):
         self.gmail_api_client_secret_filename = gmail_api_client_secret_filename
+        self.SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
         self.creds = self.__retrieve_creds()
 
     def __retrieve_creds(self):
@@ -23,7 +30,7 @@ class EmailRetriever:
         # created automatically when the authorization flow completes for the first
         # time.
         if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+            creds = Credentials.from_authorized_user_file("token.json", self.SCOPES)
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
@@ -31,7 +38,7 @@ class EmailRetriever:
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.gmail_api_client_secret_filename,
-                    SCOPES
+                    self.SCOPES
                 )
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
@@ -44,16 +51,19 @@ class EmailRetriever:
             # Call the Gmail API
             service = build("gmail", "v1", credentials=self.creds)
             # Retrieve emails in 'primary' section of inbox
-            query = 'in:inbox -category:social -category:promotions -category:updates -category:forums'
-            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query).execute())
+            query = 'in:inbox -category:social -category:promotions'
+            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=500).execute())
             emails: list[Email] = []
             for message in unread_messages.get('messages'):
                 msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
+                message_id = message['id']
                 timestamp = msg['internalDate'] # unix-like timestamp (milliseconds from 1/1/1970)
                 time_sent = datetime.fromtimestamp(int(timestamp) // 1000)
+                sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'From')
                 subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
-                body = self.__retrieve_body(msg)
-                email = Email(time_sent, subject, body)
+                body_base64 = self.__retrieve_body(msg.get('payload'))
+                body = self.__decode_body(body_base64)
+                email = Email(message_id, time_sent, sent_from, subject, body)
                 emails.append(email)
             return emails
 
@@ -62,16 +72,37 @@ class EmailRetriever:
             print(f"An error occurred: {error}")
             return []
 
-    def __retrieve_body(self, msg) -> str:
-        body_base64 = next(part.get('body').get('data') for part in msg['payload']['parts'] if part.get('mimeType') == 'text/plain')
+    def __retrieve_body(self, payload) -> Any:
+        parts: list[Any] | None = payload.get('parts', None)
+        if parts is None:
+            return payload.get('body').get('data')
+
+        parts_mimetypes = [part.get('mimeType') for part in parts]
+        # desired mime type, in order: text/plain, text/html, multipart/alternative (contains plain & html), multipart/related. Images not supported (yet)
+        # TODO: support passing images from image/jpeg, image/png, image/gif mime types to OpenAI api
+        if MimeType.TEXT_PLAIN in parts_mimetypes:
+            index = parts_mimetypes.index(MimeType.TEXT_PLAIN)
+            part = parts[index]
+            return part.get('body').get('data')
+
+        if MimeType.TEXT_HTML in parts_mimetypes:
+            index = parts_mimetypes.index(MimeType.TEXT_HTML)
+            part = parts[index]
+            return part.get('body').get('data')
+
+        if MimeType.MULTIPART_ALTERNATIVE in parts_mimetypes:
+            index = parts_mimetypes.index(MimeType.MULTIPART_ALTERNATIVE)
+            part = parts[index]
+            return self.__retrieve_body(part)
+
+        if MimeType.MULTIPART_RELATED in parts_mimetypes:
+            index = parts_mimetypes.index(MimeType.MULTIPART_RELATED)
+            part = parts[index]
+            return self.__retrieve_body(part)
+
+        assert False
+
+    @staticmethod
+    def __decode_body(body_base64: str) -> str:
         decoded_body = base64.urlsafe_b64decode(body_base64)
         return decoded_body.decode('utf-8')
-
-
-def main():
-    email_retriever = EmailRetriever()
-    email_retriever.retrieve_emails()
-
-
-if __name__ == "__main__":
-    main()
