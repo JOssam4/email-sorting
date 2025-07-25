@@ -2,15 +2,9 @@ import json
 from openai import OpenAI
 from datetime import datetime
 from typing import Any
-from enum import StrEnum
 from operator import itemgetter
-from Email import Email
+from Email import Email, Priority
 
-
-class Priority(StrEnum):
-    LOW = 'low'
-    MEDIUM = 'medium'
-    HIGH = 'high'
 
 
 def get_key_from_file(filename: str) -> str:

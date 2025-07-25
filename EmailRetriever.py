@@ -52,7 +52,7 @@ class EmailRetriever:
             service = build("gmail", "v1", credentials=self.creds)
             # Retrieve emails in 'primary' section of inbox
             query = 'in:inbox -category:social -category:promotions'
-            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=500).execute())
+            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=3).execute())
             emails: list[Email] = []
             for message in unread_messages.get('messages'):
                 msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
@@ -64,7 +64,7 @@ class EmailRetriever:
                 subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
                 body_base64 = self.__retrieve_body(msg.get('payload'))
                 body = self.__decode_body(body_base64)
-                email = Email(message_id, link, time_sent, sent_from, subject, body)
+                email = Email(message_id, link, time_sent, sent_from, subject, body, None)
                 emails.append(email)
             return emails
 
@@ -110,5 +110,5 @@ class EmailRetriever:
 
     @staticmethod
     def __make_url_from_message_id(message_id: str) -> str:
-        user_id = 'me'
+        user_id = '0'
         return f'https://mail.google.com/mail/u/{user_id}/#all/{message_id}'
