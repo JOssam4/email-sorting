@@ -46,6 +46,14 @@ class EmailRetriever:
                 token.write(creds.to_json())
         return creds
 
+    def retrieve_username(self) -> str:
+        """
+        :return: username of user (email address = username@gmail.com)
+        """
+        service = build("gmail", "v1", credentials=self.creds)
+        profile = service.users().getProfile(userId='me').execute()
+        return profile['emailAddress'].removesuffix('@gmail.com')
+
     def retrieve_emails(self) -> list[Email]:
         try:
             # Call the Gmail API
