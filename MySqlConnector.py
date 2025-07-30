@@ -12,7 +12,6 @@ class MySqlConnector:
                 user='root',
                 password=password,
             )
-            print('Connection established successfully')
             print(f'Creating schema {schema} if it does not already exist...')
             self.__create_schema_if_not_exist(schema)
             print(f'Creating table if it does not already exist...')
