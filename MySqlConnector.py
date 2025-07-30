@@ -1,6 +1,7 @@
 from typing import Any
 from mysql import connector
-from Email import Email
+from Email import Email, Priority
+
 
 class MySqlConnector:
     def __init__(self, password: str, schema: str):
@@ -46,10 +47,19 @@ class MySqlConnector:
     def update_priorities(self, emails: list[Email]) -> None:
         if not self.mydb.is_connected():
             raise ConnectionError('Connection to MySql closed')
-        sql = "UPDATE emails SET priority = %s"
-        data = [email.priority for email in emails]
+        low_priority_email_ids = [(email.gmail_id,) for email in emails if email.priority == Priority.LOW]
+        medium_priority_emails_ids = [(email.gmail_id,) for email in emails if email.priority == Priority.MEDIUM]
+        high_priority_emails_ids = [(email.gmail_id,) for email in emails if email.priority == Priority.HIGH]
+        set_low_priority_sql = f"UPDATE emails SET priority = 'low' WHERE gmail_id IN ({', '.join(['%s'] * len(low_priority_email_ids))})"
+        set_medium_priority_sql = f"UPDATE emails SET priority = 'medium' WHERE gmail_id IN ({', '.join(['%s'] * len(medium_priority_emails_ids))})"
+        set_high_priority_sql = f"UPDATE emails SET priority = 'high' WHERE gmail_id IN ({', '.join(['%s'] * len(high_priority_emails_ids))})"
         with self.mydb.cursor() as cursor:
-            cursor.executemany(sql, data)
+            if len(low_priority_email_ids) > 0:
+                cursor.executemany(set_low_priority_sql, low_priority_email_ids)
+            if len(medium_priority_emails_ids) > 0:
+                cursor.executemany(set_medium_priority_sql, medium_priority_emails_ids)
+            if len(high_priority_emails_ids) > 0:
+                cursor.executemany(set_high_priority_sql, high_priority_emails_ids)
         self.mydb.commit()
 
     def close_connection(self) -> None:
