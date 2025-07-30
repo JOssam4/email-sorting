@@ -6,7 +6,6 @@ from operator import itemgetter
 from Email import Email, Priority
 
 
-
 def get_key_from_file(filename: str) -> str:
     with open(filename, 'r') as f:
         key_obj = json.load(f)

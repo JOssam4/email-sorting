@@ -60,6 +60,7 @@ class EmailRetriever:
             service = build("gmail", "v1", credentials=self.creds)
             # Retrieve emails in 'primary' section of inbox
             query = 'in:inbox -category:social -category:promotions'
+            # TODO: remove max rows
             unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=3).execute())
             emails: list[Email] = []
             for message in unread_messages.get('messages'):
