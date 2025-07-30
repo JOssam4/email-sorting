@@ -32,7 +32,7 @@ def run(gmail_api_client_secret_filename: str, mysql_password: str) -> list[Emai
     schema_name = f'{username}_emails'
     mysql_connector = MySqlConnector(mysql_password, schema_name)
     store_emails_in_database(mysql_connector, emails)
-    process_emails(emails)
+    analyze_emails(emails)
     update_priorities_in_database(mysql_connector, emails)
     return [EmailWithoutBody(email.gmail_id, email.link, email.time_sent, email.sent_from, email.subject, email.priority) for email in emails]
 
