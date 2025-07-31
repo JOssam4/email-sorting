@@ -54,7 +54,7 @@ def update_priorities_in_database(mysql_connector: MySqlConnector, emails: list[
     print('finished setting priorities')
 
 
-def process_emails(emails: list[Email]) -> None:
+def analyze_emails(emails: list[Email]) -> None:
     email_analyzer = EmailAnalyzer()
     for email in emails:
         analysis = email_analyzer.analyze_email(email)
