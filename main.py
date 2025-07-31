@@ -1,13 +1,18 @@
+from http.client import HTTPException
+from dns.tsig import BadSignature
 from Email import Email, EmailWithoutBody
 from EmailAnalyzer import EmailAnalyzer
 from EmailRetriever import EmailRetriever
 from MySqlConnector import MySqlConnector
 from Secrets import Secrets
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import RedirectResponse
+from google_auth_oauthlib.flow import Flow
+from redis import Redis
+from itsdangerous import Signer
+import uuid
 import json
-
-
-app = FastAPI()
+import uvicorn
 
 
 def read_secrets_from_json() -> Secrets:
@@ -18,14 +23,22 @@ def read_secrets_from_json() -> Secrets:
         return Secrets(gmail_api_client_secret_filename, mysql_password)
 
 
-def run(gmail_api_client_secret_filename: str, mysql_password: str) -> list[EmailWithoutBody]:
+app = FastAPI()
+secrets = read_secrets_from_json()
+secrets_file = secrets.gmail_api_client_secret_filename
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SIGNING_KEY = 'READ_THIS_FROM_DOTENV'
+signer = Signer(SIGNING_KEY)
+SESSION_COOKIE = 'session_id'
+redis_client = Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+def run(mysql_password: str) -> list[EmailWithoutBody]:
     """
     1. Retrieve emails
     2. Put emails in database
     3. Analyze emails
     4. Put the analysis into the database
     """
-    email_retriever = EmailRetriever(gmail_api_client_secret_filename)
     username = email_retriever.retrieve_username()
     emails = email_retriever.retrieve_emails()
 
@@ -61,13 +74,90 @@ def analyze_emails(emails: list[Email]) -> None:
         priority = EmailAnalyzer.get_email_priority(analysis)
         email.priority = priority
 
+
+def create_session(response: Response) -> None:
+    session_id = str(uuid.uuid4())
+    signed_session_id = signer.sign(session_id).decode()
+    redis_client.hset(f'session:{session_id}', mapping={'credentials': ''})
+    response.set_cookie(key=SESSION_COOKIE, value=signed_session_id, httponly=True)
+
+
+def set_credentials(request: Request, credentials_json: str) -> None:
+    signed_session_id = request.cookies.get(SESSION_COOKIE)
+    if not signed_session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        session_id = signer.unsign(signed_session_id).decode()
+    except BadSignature:
+        raise HTTPException(status_code=401, detail='Invalid session cookie')
+
+    redis_client.hset(f'session:{session_id}', mapping={'credentials': credentials_json})
+
+
+def retrieve_credentials(request: Request) -> str:
+    signed_session_id = request.cookies.get(SESSION_COOKIE)
+    if not signed_session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        session_id = signer.unsign(signed_session_id).decode()
+    except BadSignature:
+        raise HTTPException(status_code=401, detail='Invalid session cookie')
+    credentials = redis_client.hget(f'session:{session_id}', 'credentials')
+    if not credentials:
+        raise HTTPException(status_code=401, detail='Session expired or invalid')
+    return credentials
+
+
 @app.get('/analyze_emails')
 def read_analyzed_emails():
     print('ACTUALLY HIT ENDPOINT')
     # return run(secrets_filename)
 
 
+@app.get('/callback')
+def callback(request: Request):
+    code = request.query_params.get('code')
+    state = request.query_params.get('state')
+    flow = Flow.from_client_secrets_file(secrets_file, scopes=SCOPES, state=state)
+    flow.redirect_uri = 'http://localhost:8000/callback'
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+    credentials_json = credentials.to_json()
+    set_credentials(request, credentials_json)
+    return RedirectResponse('http://localhost:8000/emails')
+
+
+@app.get('/login')
+def login():
+    flow = Flow.from_client_secrets_file(secrets_file, scopes=SCOPES, redirect_uri='http://localhost:8000/callback')
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    return RedirectResponse(auth_url)
+
+
+@app.get('/emails')
+def emails(request: Request):
+    credentials_json = retrieve_credentials(request)
+    email_retriever = EmailRetriever(credentials_json, SCOPES)
+    username = email_retriever.retrieve_username()
+    emails = email_retriever.retrieve_emails()
+    return {"status": "success"}
+
+
+@app.get('/')
+def main(response: Response):
+    create_session(response)
+    return {'message': 'success'}
+
+
 if __name__ == '__main__':
     # read_analyzed_emails()
-    secrets = read_secrets_from_json()
-    run(secrets.gmail_api_client_secret_filename, secrets.mysql_password)
+    # secrets = read_secrets_from_json()
+    # run(secrets.gmail_api_client_secret_filename, secrets.mysql_password)
+    """
+    ORDER OF OPERATIONS:
+    1. Navigate to http://localhost:8000. This will set the cookie
+    2. Navigate to http://localhost:8000/login. This will start the authentication flow
+    
+    The frontend will be responsible for bridging this gap, but for now you must visit the two endpoints separately.
+    """
+    uvicorn.run(app)
