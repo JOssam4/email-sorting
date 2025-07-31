@@ -26,10 +26,21 @@ class Email:
 
 
 @dataclass()
-class EmailWithoutBody:
+class EmailMetadata:
     gmail_id: str
     link: str
     time_sent: datetime
     sent_from: str
     subject: str
     priority: Optional[Priority]
+
+    @classmethod
+    def from_email(cls, email: Email) -> 'EmailMetadata':
+        return cls(
+            gmail_id=email.gmail_id,
+            link=email.link,
+            time_sent=email.time_sent,
+            sent_from=email.sent_from,
+            subject=email.subject,
+            priority=email.priority,
+        )

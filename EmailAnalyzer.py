@@ -17,7 +17,7 @@ class EmailAnalyzer:
         self.api_key = get_key_from_file('apikey.json')
         self.now = datetime.now()
 
-    def analyze_email(self, email: Email) -> dict[str, Any]:
+    def determine_email_priority(self, email: Email) -> Priority:
         date_sent_timestamp = self.__get_timestamp_from_datetime(email.time_sent)
         now_timestamp = self.__get_timestamp_from_datetime(self.now)
         client = OpenAI(api_key=self.api_key)
@@ -25,23 +25,47 @@ class EmailAnalyzer:
             model="gpt-4.1-nano",
             input=[
                 {
-                    'role': 'system',
-                    'content': '''Read the following email subject and message. Respond with a JSON object containing:
-                            - "action": a boolean indicating if the email asks the user to perform an action
-                            - "overdue": a boolean indicating whether the action is overdue
-                            - "due_soon": a boolean indicating whether the action should be done in the upcoming week
-                            - "urgent": a scale from 1 to 10 indicating how urgent the email is
-                            - "explanation": an explanation for urgency score
-                        '''
+                    "role": "system",
+                    "content": """
+        You are an assistant that analyzes emails to extract actionable information.
+
+        Given an email's subject, body, and timestamps, return a JSON object with the following fields:
+        - "action" (bool): Does the email request or imply the user needs to do something?
+        - "overdue" (bool): Is the requested action overdue based on the date it was sent and the current date?
+        - "due_soon" (bool): Is the action due in the next 7 days from the current date?
+        - "urgent" (int, 1-10): Rate the urgency of the action, where 1 is not urgent and 10 is extremely urgent.
+        - "explanation" (str): A brief explanation justifying the urgency score.
+
+        Use your best judgment if the email is vague. Be concise and consistent in the JSON response.
+
+        Example output:
+        {
+          "action": true,
+          "overdue": false,
+          "due_soon": true,
+          "urgent": 7,
+          "explanation": "The sender asked for a reply within a week, indicating moderate urgency."
+        }
+        """
                 },
                 {
-                    'role': 'user',
-                    'content': f'Today the date/time is: {now_timestamp} Message sent: "{date_sent_timestamp}" Subject: "{email.subject}" Message: "{email.body}"'
+                    "role": "user",
+                    "content": f"""
+        Current date/time: {now_timestamp}
+        Message sent: {date_sent_timestamp}
+
+        Subject: {email.subject}
+
+        Body:
+        {email.body}
+        """
                 }
             ],
             temperature=0
         )
-        return json.loads(response.output_text)
+
+        analysis = json.loads(response.output_text)
+        return self.get_email_priority(analysis)
 
     @staticmethod
     def get_email_priority(analysis: dict[str, Any]) -> Priority:
