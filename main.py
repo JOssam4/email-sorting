@@ -33,7 +33,7 @@ def fetch_emails(gmail_api_client_secret_filename: str) -> (str, list[Email]):
 def evaluate_email_priorities_if_necessary(mysql_connector: MySqlConnector, emails: list[Email]) -> None:
     email_analyzer = EmailAnalyzer()
     gmail_ids_without_priority = mysql_connector.get_gmail_ids_without_priority()
-    emails_needing_priority = [email for email in emails if email.gmail_id in gmail_ids_without_priority]
+    emails_needing_priority = (email for email in emails if email.gmail_id in gmail_ids_without_priority)
     for email in emails_needing_priority:
         email.priority = email_analyzer.determine_email_priority(email)
     print('finished evaluating email priorities')

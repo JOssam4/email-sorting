@@ -30,7 +30,7 @@ class EmailAnalyzer:
         You are an assistant that analyzes emails to extract actionable information.
 
         Given an email's subject, body, and timestamps, return a JSON object with the following fields:
-        - "action" (bool): Does the email request or imply the user needs to do something?
+        - "actionable" (bool): Does the email request or imply the user needs to do something?
         - "overdue" (bool): Is the requested action overdue based on the date it was sent and the current date?
         - "due_soon" (bool): Is the action due in the next 7 days from the current date?
         - "urgent" (int, 1-10): Rate the urgency of the action, where 1 is not urgent and 10 is extremely urgent.
