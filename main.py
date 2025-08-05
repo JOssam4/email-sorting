@@ -167,13 +167,11 @@ async def serve_react_app(request: Request, full_path: str):
 
 if __name__ == '__main__':
     # read_analyzed_emails()
-    # secrets = read_secrets_from_json()
-    # run(secrets.gmail_api_client_secret_filename, secrets.mysql_password)
     """
     ORDER OF OPERATIONS:
     1. Navigate to http://localhost:8000. This will set the cookie
     2. Navigate to http://localhost:8000/login. This will start the authentication flow
     
-    The frontend will be responsible for bridging this gap, but for now you must visit the two endpoints separately.
+    The frontend will bridge this gap, but if you're testing just using the backend you must visit the two endpoints separately.
     """
     uvicorn.run(app)
