@@ -1,5 +1,10 @@
+import os
 from http.client import HTTPException
 from dns.tsig import BadSignature
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse
+
 from Email import Email, EmailWithoutBody
 from EmailAnalyzer import EmailAnalyzer
 from EmailRetriever import EmailRetriever
@@ -31,6 +36,8 @@ SIGNING_KEY = 'READ_THIS_FROM_DOTENV'
 signer = Signer(SIGNING_KEY)
 SESSION_COOKIE = 'session_id'
 redis_client = Redis(host='localhost', port=6379, db=0, decode_responses=True)
+app.mount('/public', StaticFiles(directory='public'), name='public')
+templates = Jinja2Templates(directory='./public')
 
 def run(mysql_password: str) -> list[EmailWithoutBody]:
     """
@@ -140,14 +147,23 @@ def emails(request: Request):
     email_retriever = EmailRetriever(credentials_json, SCOPES)
     username = email_retriever.retrieve_username()
     emails = email_retriever.retrieve_emails()
-    return {"status": "success"}
+    return templates.TemplateResponse(request, 'index.html')
 
 
 @app.get('/')
-def main(response: Response):
+def main(request: Request, response: Response):
     create_session(response)
-    return {'message': 'success'}
+    return templates.TemplateResponse(request, 'index.html', headers=response.headers)
 
+
+# Note: this *must* be the last route defined since it's a catch-all route.
+# Its purpose is to serve static files requested by frontend.
+@app.get("/{full_path:path}")
+async def serve_react_app(request: Request, full_path: str):
+    path_to_file = os.path.join('./public', full_path)
+    if 'assets' in path_to_file:
+        return FileResponse(path_to_file)
+    return {'message': 'failure'}
 
 if __name__ == '__main__':
     # read_analyzed_emails()
