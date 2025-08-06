@@ -1,7 +1,7 @@
 import hashlib
 from typing import Any
 from mysql import connector
-from Email import Email
+from Email import Email, Priority, EmailMetadata
 
 
 class MySqlConnector:
@@ -50,7 +50,22 @@ class MySqlConnector:
             selected_fields = '*' if select_fields is None or len(select_fields) == 0 else ', '.join(select_fields)
             cursor.execute(f"SELECT {selected_fields} FROM emails")
             results = cursor.fetchall()
-        return results
+        emails = [EmailMetadata(email_row[1], email_row[2], email_row[3], email_row[4], email_row[5], email_row[6])
+                  for email_row in results]
+        return emails
+
+    def retrieve_emails_with_priority(self, priority: Priority) -> list[EmailMetadata]:
+        if not self.mydb.is_connected():
+            raise ConnectionError('Connection to MySql closed')
+        if priority not in {'low', 'medium', 'high'}:
+            raise RuntimeError(f'priority {priority} is not one of "low", "medium", "high"')
+        with self.mydb.cursor() as cursor:
+            query = f"SELECT * FROM emails WHERE priority = '{priority.value}'"
+            cursor.execute(query)
+            results = cursor.fetchall()
+        emails = [EmailMetadata(email_row[1], email_row[2], email_row[3], email_row[4], email_row[5], email_row[6])
+                  for email_row in results]
+        return emails
 
     def sync_emails_to_db(self, emails: list[Email]) -> None:
         """
@@ -61,13 +76,13 @@ class MySqlConnector:
             raise ConnectionError('Connection to MySql closed')
 
         sql = """
-        INSERT INTO emails (gmail_id, link, time_sent, sent_from, priority)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO emails (gmail_id, link, subject, time_sent, sent_from, priority)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
             priority = VALUES(priority)
         """
         data = [
-            (email.gmail_id, email.link, email.time_sent, email.sent_from, email.priority)
+            (email.gmail_id, email.link, email.subject, email.time_sent, email.sent_from, email.priority)
             for email in emails
         ]
         with self.mydb.cursor() as cursor:
@@ -91,6 +106,7 @@ class MySqlConnector:
                 primary key,
             gmail_id  varchar(16)                    not null,
             link      tinytext                       null,
+            subject   text                           null,
             time_sent datetime                       null,
             sent_from text                           null,
             priority  enum ('low', 'medium', 'high') null,
