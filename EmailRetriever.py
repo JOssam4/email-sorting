@@ -45,7 +45,7 @@ class EmailRetriever:
                     link = self.__make_url_from_message_id(message_id)
                     timestamp = msg['internalDate'] # unix-like timestamp (milliseconds from 1/1/1970)
                     time_sent = datetime.fromtimestamp(int(timestamp) // 1000)
-                    sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'From')
+                    sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name').lower() == 'from')
                     subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
                     body_base64 = self.__retrieve_body(msg.get('payload'))
                     body = self.__decode_body(body_base64)
