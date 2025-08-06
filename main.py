@@ -1,16 +1,18 @@
+import asyncio
 import os
+import random
 from http.client import HTTPException
 from dns.tsig import BadSignature
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
 
-from Email import Email, EmailMetadata
+from Email import Email, Priority
 from EmailAnalyzer import EmailAnalyzer
 from EmailRetriever import EmailRetriever
 from MySqlConnector import MySqlConnector
 from Secrets import Secrets
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
@@ -30,21 +32,27 @@ app.mount('/public', StaticFiles(directory='public'), name='public')
 templates = Jinja2Templates(directory='./public')
 
 
-def run(gmail_api_client_secret_filename: str, mysql_password: str, call_chatgpt_api: bool=False) -> list[EmailMetadata]:
+def run(request: Request) -> None:
     """
     1. Retrieve emails
     2. Analyze emails if necessary
     3. Update database with any new emails and/or priorities
     """
-    (username, emails) = fetch_emails(gmail_api_client_secret_filename)
+    mysql_password = secrets.mysql_password
+    call_chatgpt_api = secrets.call_chatgpt_api
+    credentials_json = retrieve_credentials(request)
+    (username, emails) = fetch_emails(credentials_json)
+    # TODO: remove this logic here. It's just for testing.
+    for email in emails:
+        email.priority = random.choice([Priority.LOW, Priority.MEDIUM, Priority.HIGH])
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        if call_chatgpt_api: evaluate_email_priorities_if_necessary(mysql_connector, emails)
+        if call_chatgpt_api:
+            evaluate_email_priorities_if_necessary(mysql_connector, emails)
         mysql_connector.sync_emails_to_db(emails)
-    return [EmailMetadata.from_email(email) for email in emails]
 
 
-def fetch_emails(gmail_api_client_secret_filename: str) -> (str, list[Email]):
-    email_retriever = EmailRetriever(gmail_api_client_secret_filename)
+def fetch_emails(credentials_json: str) -> tuple[str, list[Email]]:
+    email_retriever = EmailRetriever(credentials_json, SCOPES)
     username = email_retriever.retrieve_username()
     emails = email_retriever.retrieve_emails()
     print('finished retrieving emails')
@@ -58,7 +66,6 @@ def evaluate_email_priorities_if_necessary(mysql_connector: MySqlConnector, emai
     for email in emails_needing_priority:
         email.priority = email_analyzer.determine_email_priority(email)
     print('finished evaluating email priorities')
-
 
 
 def create_session(response: Response) -> None:
@@ -94,11 +101,48 @@ def retrieve_credentials(request: Request) -> str:
     return credentials
 
 
-@app.get('/analyze_emails')
-def read_analyzed_emails():
-    print('ACTUALLY HIT ENDPOINT')
-    # return run(secrets_filename)
+def prevent_pulling_emails(request: Request) -> None:
+    signed_session_id = request.cookies.get(SESSION_COOKIE)
+    if not signed_session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        session_id = signer.unsign(signed_session_id).decode()
+    except BadSignature:
+        raise HTTPException(status_code=401, detail='Invalid session cookie')
 
+    hash_name = f'session:{session_id}'
+    redis_client.hset(hash_name, mapping={'has_pulled_emails_recently': 'true'})
+    redis_client.hexpire(hash_name, 5 * 60, 'has_pulled_emails_recently')
+
+
+def get_should_pull_emails(request: Request) -> bool:
+    signed_session_id = request.cookies.get(SESSION_COOKIE)
+    if not signed_session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        session_id = signer.unsign(signed_session_id).decode()
+    except BadSignature:
+        raise HTTPException(status_code=401, detail='Invalid session cookie')
+
+    existing_value = redis_client.hget(f'session:{session_id}', 'has_pulled_emails_recently')
+    return existing_value is None
+
+
+@app.get('/api/priorities/{priority}')
+def get_emails_with_priority(request: Request, priority: str):
+    if not priority in {'low', 'medium', 'high'}:
+        raise HTTPException(status_code=400, detail='Invalid priority')
+    mysql_password = secrets.mysql_password
+    credentials_json = retrieve_credentials(request)
+    email_retriever = EmailRetriever(credentials_json, SCOPES)
+    username = email_retriever.retrieve_username()
+    with MySqlConnector(mysql_password, username) as mysql_connector:
+        if priority == Priority.LOW:
+            return mysql_connector.retrieve_emails_with_priority(Priority.LOW)
+        elif priority == Priority.MEDIUM:
+            return mysql_connector.retrieve_emails_with_priority(Priority.MEDIUM)
+        else:
+            return mysql_connector.retrieve_emails_with_priority(Priority.HIGH)
 
 @app.get('/callback')
 def callback(request: Request):
@@ -121,11 +165,21 @@ def login():
 
 
 @app.get('/emails')
-def emails(request: Request):
-    credentials_json = retrieve_credentials(request)
-    email_retriever = EmailRetriever(credentials_json, SCOPES)
-    username = email_retriever.retrieve_username()
-    emails = email_retriever.retrieve_emails()
+def emails(request: Request, background_tasks: BackgroundTasks):
+    try:
+        retrieve_credentials(request)
+    except HTTPException:
+        return RedirectResponse('http://localhost:8000/')
+
+    should_pull_emails = get_should_pull_emails(request)
+    if should_pull_emails:
+        background_tasks.add_task(run, request) # start expensive run(request) method in background. Let endpoint resolve without waiting on that task.
+        prevent_pulling_emails(request)
+        print('Pulling new emails')
+    else:
+        print('New emails will not be pulled.')
+    # username = email_retriever.retrieve_username()
+    # emails = email_retriever.retrieve_emails()
     return templates.TemplateResponse(request, 'index.html')
 
 
@@ -134,6 +188,10 @@ def main(request: Request, response: Response):
     create_session(response)
     return templates.TemplateResponse(request, 'index.html', headers=response.headers)
 
+
+@app.get('/emails/priority/{priority}')
+def serve_frontend_for_email_priorities(request: Request, response: Response):
+    return templates.TemplateResponse(request, 'index.html', headers=response.headers)
 
 # Note: this *must* be the last route defined since it's a catch-all route.
 # Its purpose is to serve static files requested by frontend.
