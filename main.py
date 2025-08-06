@@ -1,7 +1,5 @@
-import asyncio
 import os
 import random
-from http.client import HTTPException
 from dns.tsig import BadSignature
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -12,7 +10,7 @@ from EmailAnalyzer import EmailAnalyzer
 from EmailRetriever import EmailRetriever
 from MySqlConnector import MySqlConnector
 from Secrets import Secrets
-from fastapi import FastAPI, Request, Response, BackgroundTasks
+from fastapi import FastAPI, Request, Response, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
