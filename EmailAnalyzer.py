@@ -1,9 +1,16 @@
 import json
 from openai import OpenAI
 from datetime import datetime
-from typing import Any
-from operator import itemgetter
 from Email import Email, Priority
+from pydantic import BaseModel
+
+
+class OutputFormat(BaseModel):
+    actionable: bool
+    overdue: bool
+    due_soon: bool
+    urgent: int
+    explanation: str
 
 
 def get_key_from_file(filename: str) -> str:
@@ -40,7 +47,7 @@ class EmailAnalyzer:
 
         Example output:
         {
-          "action": true,
+          "actionable": true,
           "overdue": false,
           "due_soon": true,
           "urgent": 7,
@@ -61,21 +68,20 @@ class EmailAnalyzer:
         """
                 }
             ],
+            text_format=OutputFormat,
             temperature=0
         )
 
-        analysis = json.loads(response.output_text)
-        return self.get_email_priority(analysis)
+        return self.get_email_priority(response.output_parsed)
 
     @staticmethod
-    def get_email_priority(analysis: dict[str, Any]) -> Priority:
+    def get_email_priority(analysis: OutputFormat) -> Priority:
         # destructure the dictionary into variables
-        action, overdue, due_soon, urgent, explanation = itemgetter('action', 'overdue', 'due_soon', 'urgent', 'explanation')(analysis)
-        if overdue:
+        if analysis.overdue:
             return Priority.HIGH
-        elif due_soon or urgent >= 5:
+        elif analysis.due_soon or analysis.urgent >= 5:
             return Priority.MEDIUM
-        elif not action or urgent < 5:
+        elif not analysis.actionable or analysis.urgent < 5:
             return Priority.LOW
         return Priority.LOW
 
