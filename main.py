@@ -82,7 +82,9 @@ def set_credentials(request: Request, credentials_json: str) -> None:
     except BadSignature:
         raise HTTPException(status_code=401, detail='Invalid session cookie')
 
-    redis_client.hset(f'session:{session_id}', mapping={'credentials': credentials_json})
+    hash_name = f'session:{session_id}'
+    redis_client.hset(hash_name, mapping={'credentials': credentials_json})
+    redis_client.expire(hash_name, timedelta(hours=1))
 
 
 def retrieve_credentials(request: Request) -> str:
