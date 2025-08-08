@@ -1,9 +1,7 @@
 import base64
-import os.path
+import json
 from datetime import datetime
-from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from Email import Email
@@ -19,32 +17,9 @@ class MimeType(StrEnum):
 
 
 class EmailRetriever:
-    def __init__(self, gmail_api_client_secret_filename: str):
-        self.gmail_api_client_secret_filename = gmail_api_client_secret_filename
-        self.SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-        self.creds = self.__retrieve_creds()
-
-    def __retrieve_creds(self):
-        creds = None
-        # The file token.json stores the user's access and refresh tokens, and is
-        # created automatically when the authorization flow completes for the first
-        # time.
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", self.SCOPES)
-        # If there are no (valid) credentials available, let the user log in.
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.gmail_api_client_secret_filename,
-                    self.SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
-        return creds
+    def __init__(self, credentials_json: str, scopes: list[str]):
+        credentials_dict = json.loads(credentials_json)
+        self.creds = Credentials.from_authorized_user_info(credentials_dict, scopes)
 
     def retrieve_username(self) -> str:
         """
@@ -70,7 +45,7 @@ class EmailRetriever:
                     link = self.__make_url_from_message_id(message_id)
                     timestamp = msg['internalDate'] # unix-like timestamp (milliseconds from 1/1/1970)
                     time_sent = datetime.fromtimestamp(int(timestamp) // 1000)
-                    sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'From')
+                    sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name').lower() == 'from')
                     subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
                     body_base64 = self.__retrieve_body(msg.get('payload'))
                     body = self.__decode_body(body_base64)
