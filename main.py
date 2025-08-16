@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import timedelta
 from typing import Generator, Iterable
@@ -6,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
 
-from Email import Email, Priority
+from Email import Email, Priority, EmailIdAndPriority
 from EmailAnalyzer import EmailAnalyzer
 from EmailRetriever import EmailRetriever
 from MySqlConnector import MySqlConnector
@@ -31,7 +32,7 @@ app.mount('/public', StaticFiles(directory='public'), name='public')
 templates = Jinja2Templates(directory='./public')
 
 
-def run(request: Request) -> None:
+async def run(request: Request) -> None:
     """
     1. Retrieve emails
     2. Analyze emails if necessary
@@ -45,7 +46,7 @@ def run(request: Request) -> None:
         mysql_connector.sync_emails_to_db(emails)
     emails_needing_priority = get_emails_needing_priority(mysql_password, username, emails)
     if call_chatgpt_api:
-        emails_to_update = evaluate_email_priorities(emails_needing_priority)
+        emails_to_update = await evaluate_email_priorities(emails_needing_priority)
     else:
         emails_to_update = []
     with MySqlConnector(mysql_password, username) as mysql_connector:
@@ -66,14 +67,18 @@ def get_emails_needing_priority(mysql_password: str, username: str, emails: list
     return (email for email in emails if email.gmail_id in gmail_ids_without_priority)
 
 
-def evaluate_email_priorities(emails_needing_priority: Iterable[Email]) -> list[Email]:
+async def evaluate_email_priorities(emails_needing_priority: Iterable[Email]) -> list[Email]:
     email_analyzer = EmailAnalyzer()
-    updated_emails = []
-    for email in emails_needing_priority:
-        email.priority = email_analyzer.determine_email_priority(email)
-        updated_emails.append(email)
-    print('finished evaluating email priorities')
-    return updated_emails
+    emails = [email for email in emails_needing_priority]
+    gmail_id_to_email_dict = {email.gmail_id: email for email in emails}
+    priority_coros = [email_analyzer.determine_email_priority(email) for email in emails]
+    email_ids_and_priorities: list[EmailIdAndPriority] = await asyncio.gather(*priority_coros)
+    for email_id_and_priority in email_ids_and_priorities:
+        gmail_id = email_id_and_priority.gmail_id
+        email = gmail_id_to_email_dict.get(gmail_id)
+        email.priority = email_id_and_priority.priority
+    print('\033[92mfinished evaluating email priorities\033[0m')
+    return emails
 
 
 def create_session(response: Response) -> None:
