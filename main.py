@@ -24,7 +24,7 @@ app = FastAPI()
 secrets = Secrets.from_env()
 secrets_file = secrets.gmail_api_client_secret_filename
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-SIGNING_KEY = 'READ_THIS_FROM_DOTENV'
+SIGNING_KEY = secrets.signing_key
 signer = Signer(SIGNING_KEY)
 SESSION_COOKIE = 'session_id'
 redis_client = Redis(host='localhost', port=6379, db=0, decode_responses=True)
