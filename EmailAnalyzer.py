@@ -29,7 +29,7 @@ class EmailAnalyzer:
         now_timestamp = self.__get_timestamp_from_datetime(self.now)
         client = OpenAI(api_key=self.api_key)
         response = client.responses.parse(
-            model="gpt-4.1-nano",
+            model="gpt-5-nano",
             input=[
                 {
                     "role": "system",
