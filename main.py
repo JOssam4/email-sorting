@@ -87,7 +87,7 @@ def create_session(response: Response) -> None:
     session_id = str(uuid.uuid4())
     signed_session_id = signer.sign(session_id).decode()
     redis_client.hset(f'session:{session_id}', mapping={'credentials': ''})
-    response.set_cookie(key=SESSION_COOKIE, value=signed_session_id, httponly=True)
+    response.set_cookie(key=SESSION_COOKIE, value=signed_session_id, httponly=True, max_age=3600)
 
 
 def set_credentials(request: Request, credentials_json: str) -> None:
@@ -235,11 +235,4 @@ async def serve_react_app(full_path: str):
     return {'message': 'failure'}
 
 if __name__ == '__main__':
-    """
-    ORDER OF OPERATIONS:
-    1. Navigate to http://localhost:8000. This will set the cookie
-    2. Navigate to http://localhost:8000/login. This will start the authentication flow
-    
-    The frontend will bridge this gap, but if you're testing just using the backend you must visit the two endpoints separately.
-    """
     uvicorn.run(app)
