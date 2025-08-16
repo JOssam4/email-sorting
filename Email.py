@@ -44,3 +44,9 @@ class EmailMetadata:
             subject=email.subject,
             priority=email.priority,
         )
+
+
+@dataclass
+class EmailIdAndPriority:
+    gmail_id: str
+    priority: Optional[Priority]

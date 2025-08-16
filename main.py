@@ -1,11 +1,13 @@
+import asyncio
 import os
-import random
+from datetime import timedelta
+from typing import Generator, Iterable
 from dns.tsig import BadSignature
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
 
-from Email import Email, Priority
+from Email import Email, Priority, EmailIdAndPriority
 from EmailAnalyzer import EmailAnalyzer
 from EmailRetriever import EmailRetriever
 from MySqlConnector import MySqlConnector
@@ -30,7 +32,7 @@ app.mount('/public', StaticFiles(directory='public'), name='public')
 templates = Jinja2Templates(directory='./public')
 
 
-def run(request: Request) -> None:
+async def run(request: Request) -> None:
     """
     1. Retrieve emails
     2. Analyze emails if necessary
@@ -39,14 +41,16 @@ def run(request: Request) -> None:
     mysql_password = secrets.mysql_password
     call_chatgpt_api = secrets.call_chatgpt_api
     credentials_json = retrieve_credentials(request)
-    (username, emails) = fetch_emails(credentials_json)
-    # TODO: remove this logic here. It's just for testing.
-    for email in emails:
-        email.priority = random.choice([Priority.LOW, Priority.MEDIUM, Priority.HIGH])
+    username, emails = fetch_emails(credentials_json)
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        if call_chatgpt_api:
-            evaluate_email_priorities_if_necessary(mysql_connector, emails)
         mysql_connector.sync_emails_to_db(emails)
+    emails_needing_priority = get_emails_needing_priority(mysql_password, username, emails)
+    if call_chatgpt_api:
+        emails_to_update = await evaluate_email_priorities(emails_needing_priority)
+    else:
+        emails_to_update = []
+    with MySqlConnector(mysql_password, username) as mysql_connector:
+        mysql_connector.sync_emails_to_db(emails_to_update)
 
 
 def fetch_emails(credentials_json: str) -> tuple[str, list[Email]]:
@@ -57,13 +61,24 @@ def fetch_emails(credentials_json: str) -> tuple[str, list[Email]]:
     return username, emails
 
 
-def evaluate_email_priorities_if_necessary(mysql_connector: MySqlConnector, emails: list[Email]) -> None:
+def get_emails_needing_priority(mysql_password: str, username: str, emails: list[Email]) -> Generator[Email]:
+    with MySqlConnector(mysql_password, username) as mysql_connector:
+        gmail_ids_without_priority = mysql_connector.get_gmail_ids_without_priority()
+    return (email for email in emails if email.gmail_id in gmail_ids_without_priority)
+
+
+async def evaluate_email_priorities(emails_needing_priority: Iterable[Email]) -> list[Email]:
     email_analyzer = EmailAnalyzer()
-    gmail_ids_without_priority = mysql_connector.get_gmail_ids_without_priority()
-    emails_needing_priority = (email for email in emails if email.gmail_id in gmail_ids_without_priority)
-    for email in emails_needing_priority:
-        email.priority = email_analyzer.determine_email_priority(email)
-    print('finished evaluating email priorities')
+    emails = [email for email in emails_needing_priority]
+    gmail_id_to_email_dict = {email.gmail_id: email for email in emails}
+    priority_coros = [email_analyzer.determine_email_priority(email) for email in emails]
+    email_ids_and_priorities: list[EmailIdAndPriority] = await asyncio.gather(*priority_coros)
+    for email_id_and_priority in email_ids_and_priorities:
+        gmail_id = email_id_and_priority.gmail_id
+        email = gmail_id_to_email_dict.get(gmail_id)
+        email.priority = email_id_and_priority.priority
+    print('\033[92mfinished evaluating email priorities\033[0m')
+    return emails
 
 
 def create_session(response: Response) -> None:
