@@ -217,8 +217,14 @@ def emails_page(request: Request, background_tasks: BackgroundTasks):
 
 @app.get('/')
 def main(request: Request, response: Response):
-    create_session(response)
-    return templates.TemplateResponse(request, 'index.html', headers=response.headers)
+    try:
+        retrieve_credentials(request)
+    except HTTPException:
+        create_session(response)
+        return templates.TemplateResponse(request, 'index.html', headers=response.headers)
+
+    # If session already exists, go redirect to emails page
+    return RedirectResponse('/emails')
 
 
 @app.get('/emails/priority/{priority}')
