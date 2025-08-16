@@ -183,7 +183,7 @@ def login():
 
 
 @app.get('/emails')
-def emails(request: Request, background_tasks: BackgroundTasks):
+def emails_page(request: Request, background_tasks: BackgroundTasks):
     try:
         retrieve_credentials(request)
     except HTTPException:
