@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Generator, Iterable
 from dns.tsig import BadSignature
@@ -142,6 +143,19 @@ def get_should_pull_emails(request: Request) -> bool:
 
     existing_value = redis_client.hget(f'session:{session_id}', 'has_pulled_emails_recently')
     return existing_value is None
+
+
+@app.middleware('http')
+async def remove_trailing_slash(request: Request, call_next: Callable):
+    # Usually defining the app like app = FastAPI() is enough to do this by default.
+    # However, we have defined a catch-all route (for serving the frontend) which supersedes the redirect,
+    # so the purpose of this middleware is the hacky workaround to remove trailing slashes.
+    if request.url.path != "/" and request.url.path.endswith("/"):
+        url = request.url.path.rstrip("/")
+        if request.url.query:
+            url += "?" + request.url.query
+        return RedirectResponse(url)
+    return await call_next(request)
 
 
 @app.get('/api/priorities/{priority}')
