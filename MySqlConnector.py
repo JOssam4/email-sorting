@@ -79,7 +79,7 @@ class MySqlConnector:
         INSERT INTO emails (gmail_id, link, subject, time_sent, sent_from, priority)
         VALUES (%s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
-            priority = VALUES(priority)
+            priority = IF(emails.priority IS NULL, VALUES(priority), emails.priority)
         """
         data = [
             (email.gmail_id, email.link, email.subject, email.time_sent, email.sent_from, email.priority)
