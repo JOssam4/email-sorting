@@ -214,7 +214,7 @@ def serve_frontend_for_email_priorities(request: Request, response: Response):
 # Note: this *must* be the last route defined since it's a catch-all route.
 # Its purpose is to serve static files requested by frontend.
 @app.get("/{full_path:path}")
-async def serve_react_app(request: Request, full_path: str):
+async def serve_react_app(full_path: str):
     path_to_file = os.path.join('./public', full_path)
     if 'assets' in path_to_file:
         return FileResponse(path_to_file)
