@@ -146,6 +146,8 @@ def get_should_pull_emails(request: Request) -> bool:
 
 @app.get('/api/priorities/{priority}')
 def get_emails_with_priority(request: Request, priority: str):
+    # check if session is valid. Credentials aren't actually used here though
+    retrieve_credentials(request)
     if not priority in {'low', 'medium', 'high'}:
         raise HTTPException(status_code=400, detail='Invalid priority')
     mysql_password = secrets.mysql_password
