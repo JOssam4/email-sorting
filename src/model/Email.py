@@ -14,9 +14,9 @@ class Priority(StrEnum):
 class Email:
     gmail_id: str
     link: str
+    subject: str
     time_sent: datetime
     sent_from: str
-    subject: str
     body: str
     priority: Optional[Priority]
 
@@ -29,9 +29,9 @@ class Email:
 class EmailMetadata:
     gmail_id: str
     link: str
+    subject: str
     time_sent: datetime
     sent_from: str
-    subject: str
     priority: Optional[Priority]
 
     @classmethod

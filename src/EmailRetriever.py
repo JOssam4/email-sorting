@@ -49,7 +49,7 @@ class EmailRetriever:
                     subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
                     body_base64 = self.__retrieve_body(msg.get('payload'))
                     body = self.__decode_body(body_base64)
-                    email = Email(message_id, link, time_sent, sent_from, subject, body, None)
+                    email = Email(message_id, link, subject, time_sent, sent_from, body, None)
                     emails.append(email)
             return emails
 
