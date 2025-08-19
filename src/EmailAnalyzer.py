@@ -2,7 +2,7 @@ import asyncio
 import json
 from openai import AsyncOpenAI
 from datetime import datetime
-from Email import Email, Priority, EmailIdAndPriority
+from src.model.Email import Email, Priority, EmailIdAndPriority
 from pydantic import BaseModel
 
 
@@ -14,6 +14,7 @@ class OutputFormat(BaseModel):
     explanation: str
 
 
+# TODO: read key from .env
 def get_key_from_file(filename: str) -> str:
     with open(filename, 'r') as f:
         key_obj = json.load(f)

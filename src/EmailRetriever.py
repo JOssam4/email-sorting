@@ -4,7 +4,7 @@ from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from Email import Email
+from src.model.Email import Email
 from typing import Any
 from enum import StrEnum
 

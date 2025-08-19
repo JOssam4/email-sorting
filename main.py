@@ -3,21 +3,20 @@ import os
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Generator, Iterable
-from dns.tsig import BadSignature
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
 
-from Email import Email, Priority, EmailIdAndPriority
-from EmailAnalyzer import EmailAnalyzer
-from EmailRetriever import EmailRetriever
-from MySqlConnector import MySqlConnector
-from Secrets import Secrets
+from src.model.Email import Email, Priority, EmailIdAndPriority
+from src.EmailAnalyzer import EmailAnalyzer
+from src.EmailRetriever import EmailRetriever
+from src.MySqlConnector import MySqlConnector
+from src.Secrets import Secrets
 from fastapi import FastAPI, Request, Response, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
-from itsdangerous import Signer
+from itsdangerous import Signer, BadSignature
 import uuid
 import uvicorn
 
