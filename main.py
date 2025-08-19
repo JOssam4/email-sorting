@@ -43,14 +43,14 @@ async def run(request: Request) -> None:
     credentials_json = retrieve_credentials(request)
     username, emails = fetch_emails(credentials_json)
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        mysql_connector.sync_emails_to_db(emails)
+        mysql_connector.sync_emails_to_db_with_deletion(emails)
     emails_needing_priority = get_emails_needing_priority(mysql_password, username, emails)
     if call_chatgpt_api:
         emails_to_update = await evaluate_email_priorities(emails_needing_priority)
     else:
         emails_to_update = []
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        mysql_connector.sync_emails_to_db(emails_to_update)
+        mysql_connector.sync_emails_to_db_without_deletion(emails_to_update)
 
 
 def fetch_emails(credentials_json: str) -> tuple[str, list[Email]]:
