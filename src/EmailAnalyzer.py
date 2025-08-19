@@ -1,5 +1,4 @@
 import asyncio
-import json
 from openai import AsyncOpenAI
 from datetime import datetime
 from src.model.Email import Email, Priority, EmailIdAndPriority
@@ -14,18 +13,10 @@ class OutputFormat(BaseModel):
     explanation: str
 
 
-# TODO: read key from .env
-def get_key_from_file(filename: str) -> str:
-    with open(filename, 'r') as f:
-        key_obj = json.load(f)
-    return key_obj['api_key']
-
-
 class EmailAnalyzer:
-    def __init__(self) -> None:
-        self.api_key = get_key_from_file('apikey.json')
+    def __init__(self, openai_key: str) -> None:
         self.now = datetime.now()
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        self.client = AsyncOpenAI(api_key=openai_key)
         self.semaphore = asyncio.Semaphore(5)
 
     async def determine_email_priority(self, email: Email) -> EmailIdAndPriority:

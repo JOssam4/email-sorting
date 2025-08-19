@@ -8,6 +8,7 @@ class Secrets:
     mysql_password: str
     call_chatgpt_api: bool
     signing_key: str
+    openai_key: str
 
     @staticmethod
     def from_env() -> 'Secrets':
@@ -16,6 +17,7 @@ class Secrets:
         mysql_password = os.getenv('MYSQL_PASSWORD')
         call_chatgpt_api = os.getenv('CALL_CHATGPT_API', 'false').lower() == 'true'
         signing_key = os.getenv('SIGNING_KEY')
+        openai_key = os.getenv('OPENAI_KEY')
         if not gmail_api_client_secret_filename or not mysql_password:
             raise ValueError("Missing environment variables in .env")
-        return Secrets(gmail_api_client_secret_filename, mysql_password, call_chatgpt_api, signing_key)
+        return Secrets(gmail_api_client_secret_filename, mysql_password, call_chatgpt_api, signing_key, openai_key)

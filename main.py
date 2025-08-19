@@ -68,7 +68,7 @@ def get_emails_needing_priority(mysql_password: str, username: str, emails: list
 
 
 async def evaluate_email_priorities(emails_needing_priority: Iterable[Email]) -> list[Email]:
-    email_analyzer = EmailAnalyzer()
+    email_analyzer = EmailAnalyzer(secrets.openai_key)
     emails = [email for email in emails_needing_priority]
     gmail_id_to_email_dict = {email.gmail_id: email for email in emails}
     priority_coros = [email_analyzer.determine_email_priority(email) for email in emails]
