@@ -1,7 +1,7 @@
 import hashlib
 from typing import Any
 from mysql import connector
-from Email import Email, Priority, EmailMetadata
+from src.model.Email import Email, Priority, EmailMetadata
 
 
 class MySqlConnector:
@@ -29,6 +29,15 @@ class MySqlConnector:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close_connection()
+
+    def retrieve_gmail_ids_of_all_emails(self):
+        if not self.mydb.is_connected():
+            raise ConnectionError('Connection to MySql closed')
+        query = 'SELECT gmail_id FROM emails'
+        with self.mydb.cursor() as cursor:
+            cursor.execute(query)
+            results = cursor.fetchall()
+        return [result[0] for result in results]
 
     def get_gmail_ids_without_priority(self) -> set[str]:
         """
@@ -67,7 +76,7 @@ class MySqlConnector:
                   for email_row in results]
         return emails
 
-    def sync_emails_to_db(self, emails: list[Email]) -> None:
+    def sync_emails_to_db_without_deletion(self, emails: list[Email]) -> None:
         """
         Insert new emails and update the priority for existing ones.
         Emails are matched by gmail_id (which must be unique).
@@ -76,11 +85,11 @@ class MySqlConnector:
             raise ConnectionError('Connection to MySql closed')
 
         sql = """
-        INSERT INTO emails (gmail_id, link, subject, time_sent, sent_from, priority)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            priority = VALUES(priority)
-        """
+                INSERT INTO emails (gmail_id, link, subject, time_sent, sent_from, priority)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    priority = IF(emails.priority IS NULL, VALUES(priority), emails.priority)
+                """
         data = [
             (email.gmail_id, email.link, email.subject, email.time_sent, email.sent_from, email.priority)
             for email in emails
@@ -88,7 +97,28 @@ class MySqlConnector:
         with self.mydb.cursor() as cursor:
             cursor.executemany(sql, data)
         self.mydb.commit()
-        print('finished adding emails to database')
+
+    def sync_emails_to_db_with_deletion(self, emails: list[Email]) -> None:
+        """
+        Insert new emails, update the priority for existing ones, and delete old emails.
+        Emails are matched by gmail_id (which must be unique).
+        """
+        self.sync_emails_to_db_without_deletion(emails)
+        existing_gmail_ids = {gmail_id for gmail_id in self.retrieve_gmail_ids_of_all_emails()}
+        new_or_updated_gmail_ids = {email.gmail_id for email in emails}
+        email_ids_to_delete = existing_gmail_ids - new_or_updated_gmail_ids
+        self.remove_emails_from_db(list(email_ids_to_delete))
+
+        print('finished syncing emails to database')
+
+    def remove_emails_from_db(self, email_ids: list[str]) -> None:
+        if len(email_ids) == 0:
+            return
+        placeholders = ', '.join(['%s'] * len(email_ids))
+        query = f"DELETE FROM emails WHERE gmail_id IN ({placeholders})"
+        with self.mydb.cursor() as cursor:
+            cursor.execute(query, tuple(email_ids))
+        self.mydb.commit()
 
     def close_connection(self) -> None:
         if self.mydb and self.mydb.is_connected():

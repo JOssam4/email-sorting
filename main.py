@@ -1,22 +1,22 @@
 import asyncio
 import os
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Generator, Iterable
-from dns.tsig import BadSignature
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
 
-from Email import Email, Priority, EmailIdAndPriority
-from EmailAnalyzer import EmailAnalyzer
-from EmailRetriever import EmailRetriever
-from MySqlConnector import MySqlConnector
-from Secrets import Secrets
+from src.model.Email import Email, Priority, EmailIdAndPriority
+from src.EmailAnalyzer import EmailAnalyzer
+from src.EmailRetriever import EmailRetriever
+from src.MySqlConnector import MySqlConnector
+from src.Secrets import Secrets
 from fastapi import FastAPI, Request, Response, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
-from itsdangerous import Signer
+from itsdangerous import Signer, BadSignature
 import uuid
 import uvicorn
 
@@ -24,7 +24,7 @@ app = FastAPI()
 secrets = Secrets.from_env()
 secrets_file = secrets.gmail_api_client_secret_filename
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-SIGNING_KEY = 'READ_THIS_FROM_DOTENV'
+SIGNING_KEY = secrets.signing_key
 signer = Signer(SIGNING_KEY)
 SESSION_COOKIE = 'session_id'
 redis_client = Redis(host='localhost', port=6379, db=0, decode_responses=True)
@@ -43,14 +43,14 @@ async def run(request: Request) -> None:
     credentials_json = retrieve_credentials(request)
     username, emails = fetch_emails(credentials_json)
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        mysql_connector.sync_emails_to_db(emails)
+        mysql_connector.sync_emails_to_db_with_deletion(emails)
     emails_needing_priority = get_emails_needing_priority(mysql_password, username, emails)
     if call_chatgpt_api:
         emails_to_update = await evaluate_email_priorities(emails_needing_priority)
     else:
         emails_to_update = []
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        mysql_connector.sync_emails_to_db(emails_to_update)
+        mysql_connector.sync_emails_to_db_without_deletion(emails_to_update)
 
 
 def fetch_emails(credentials_json: str) -> tuple[str, list[Email]]:
@@ -68,7 +68,7 @@ def get_emails_needing_priority(mysql_password: str, username: str, emails: list
 
 
 async def evaluate_email_priorities(emails_needing_priority: Iterable[Email]) -> list[Email]:
-    email_analyzer = EmailAnalyzer()
+    email_analyzer = EmailAnalyzer(secrets.openai_key)
     emails = [email for email in emails_needing_priority]
     gmail_id_to_email_dict = {email.gmail_id: email for email in emails}
     priority_coros = [email_analyzer.determine_email_priority(email) for email in emails]
@@ -77,6 +77,7 @@ async def evaluate_email_priorities(emails_needing_priority: Iterable[Email]) ->
         gmail_id = email_id_and_priority.gmail_id
         email = gmail_id_to_email_dict.get(gmail_id)
         email.priority = email_id_and_priority.priority
+    # print green
     print('\033[92mfinished evaluating email priorities\033[0m')
     return emails
 
@@ -85,7 +86,7 @@ def create_session(response: Response) -> None:
     session_id = str(uuid.uuid4())
     signed_session_id = signer.sign(session_id).decode()
     redis_client.hset(f'session:{session_id}', mapping={'credentials': ''})
-    response.set_cookie(key=SESSION_COOKIE, value=signed_session_id, httponly=True)
+    response.set_cookie(key=SESSION_COOKIE, value=signed_session_id, httponly=True, max_age=3600)
 
 
 def set_credentials(request: Request, credentials_json: str) -> None:
@@ -143,8 +144,23 @@ def get_should_pull_emails(request: Request) -> bool:
     return existing_value is None
 
 
+@app.middleware('http')
+async def remove_trailing_slash(request: Request, call_next: Callable):
+    # Usually defining the app like app = FastAPI() is enough to do this by default.
+    # However, we have defined a catch-all route (for serving the frontend) which supersedes the redirect,
+    # so the purpose of this middleware is the hacky workaround to remove trailing slashes.
+    if request.url.path != "/" and request.url.path.endswith("/"):
+        url = request.url.path.rstrip("/")
+        if request.url.query:
+            url += "?" + request.url.query
+        return RedirectResponse(url)
+    return await call_next(request)
+
+
 @app.get('/api/priorities/{priority}')
 def get_emails_with_priority(request: Request, priority: str):
+    # check if session is valid. Credentials aren't actually used here though
+    retrieve_credentials(request)
     if not priority in {'low', 'medium', 'high'}:
         raise HTTPException(status_code=400, detail='Invalid priority')
     mysql_password = secrets.mysql_password
@@ -180,7 +196,7 @@ def login():
 
 
 @app.get('/emails')
-def emails(request: Request, background_tasks: BackgroundTasks):
+def emails_page(request: Request, background_tasks: BackgroundTasks):
     try:
         retrieve_credentials(request)
     except HTTPException:
@@ -200,8 +216,14 @@ def emails(request: Request, background_tasks: BackgroundTasks):
 
 @app.get('/')
 def main(request: Request, response: Response):
-    create_session(response)
-    return templates.TemplateResponse(request, 'index.html', headers=response.headers)
+    try:
+        retrieve_credentials(request)
+    except HTTPException:
+        create_session(response)
+        return templates.TemplateResponse(request, 'index.html', headers=response.headers)
+
+    # If session already exists, go redirect to emails page
+    return RedirectResponse('/emails')
 
 
 @app.get('/emails/priority/{priority}')
@@ -211,18 +233,11 @@ def serve_frontend_for_email_priorities(request: Request, response: Response):
 # Note: this *must* be the last route defined since it's a catch-all route.
 # Its purpose is to serve static files requested by frontend.
 @app.get("/{full_path:path}")
-async def serve_react_app(request: Request, full_path: str):
+async def serve_react_app(full_path: str):
     path_to_file = os.path.join('./public', full_path)
     if 'assets' in path_to_file:
         return FileResponse(path_to_file)
     return {'message': 'failure'}
 
 if __name__ == '__main__':
-    """
-    ORDER OF OPERATIONS:
-    1. Navigate to http://localhost:8000. This will set the cookie
-    2. Navigate to http://localhost:8000/login. This will start the authentication flow
-    
-    The frontend will bridge this gap, but if you're testing just using the backend you must visit the two endpoints separately.
-    """
     uvicorn.run(app)
