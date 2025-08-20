@@ -11,7 +11,7 @@ from src.model.Email import Email, Priority, EmailIdAndPriority
 from src.EmailAnalyzer import EmailAnalyzer
 from src.EmailRetriever import EmailRetriever
 from src.MySqlConnector import MySqlConnector
-from src.Secrets import Secrets
+from src.model.Secrets import Secrets
 from fastapi import FastAPI, Request, Response, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
