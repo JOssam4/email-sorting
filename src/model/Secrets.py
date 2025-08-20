@@ -10,6 +10,7 @@ class Secrets:
     signing_key: str
     openai_key: str
 
+
     @staticmethod
     def from_env() -> 'Secrets':
         load_dotenv()

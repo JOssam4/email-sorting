@@ -36,7 +36,7 @@ class EmailRetriever:
             # Retrieve emails in 'primary' section of inbox
             query = 'in:inbox -category:social -category:promotions'
             # TODO: remove max rows
-            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=3).execute())
+            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=10).execute())
             emails: list[Email] = []
             if unread_messages.get('resultSizeEstimate') > 0:
                 for message in unread_messages.get('messages'):
