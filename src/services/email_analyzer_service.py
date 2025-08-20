@@ -1,8 +1,10 @@
 import asyncio
-from openai import AsyncOpenAI
 from datetime import datetime
-from src.model.Email import Email, Priority, EmailIdAndPriority
+
+from openai import AsyncOpenAI
 from pydantic import BaseModel
+
+from src.model.email import Email, Priority, EmailIdAndPriority
 
 
 class OutputFormat(BaseModel):

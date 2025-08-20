@@ -1,17 +1,18 @@
 import os
 from typing import Callable, Any
+
 from fastapi import Request, HTTPException, BackgroundTasks, Response
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
-from src.services.MySqlConnectorService import MySqlConnector
-from src.services.EmailRetrieverService import EmailRetriever
-from src.services.EmailService import EmailService
-from src.model.Secrets import Secrets
-from src.model.Email import Priority, EmailMetadata
-from src.services.SessionService import SessionService
 from google_auth_oauthlib.flow import Flow
 from redis import Redis
 
+from src.model.email import Priority, EmailMetadata
+from src.model.secrets import Secrets
+from src.services.email_retriever_service import EmailRetriever
+from src.services.email_service import EmailService
+from src.services.mysql_connector_service import MySqlConnector
+from src.services.session_service import SessionService
 
 secrets = Secrets.from_env()
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -57,7 +58,7 @@ async def remove_trailing_slash(request: Request, call_next: Callable) -> Redire
 def get_emails_with_priority(request: Request, priority: str) -> list[EmailMetadata]:
     # check if session is valid. Credentials aren't actually used here though
     session_service.retrieve_credentials(request)
-    if not priority in {'low', 'medium', 'high'}:
+    if priority not in {'low', 'medium', 'high'}:
         raise HTTPException(status_code=400, detail='Invalid priority')
     mysql_password = secrets.mysql_password
     credentials_json = session_service.retrieve_credentials(request)
@@ -85,20 +86,22 @@ def callback(request: Request) -> RedirectResponse:
 
 
 def login() -> RedirectResponse:
-    flow = Flow.from_client_secrets_file(secrets.gmail_api_client_secret_filename, scopes=SCOPES, redirect_uri='http://localhost:8000/callback')
+    flow = Flow.from_client_secrets_file(secrets.gmail_api_client_secret_filename, scopes=SCOPES,
+                                         redirect_uri='http://localhost:8000/callback')
     auth_url, _ = flow.authorization_url(prompt='consent')
     return RedirectResponse(auth_url)
 
 
 def get_emails(request: Request, background_tasks: BackgroundTasks) -> Response:
     try:
-        session_service.retrieve_credentials(request,)
+        session_service.retrieve_credentials(request, )
     except HTTPException:
         return RedirectResponse('/')
 
     should_pull_emails = email_service.get_should_pull_emails(request)
     if should_pull_emails:
-        background_tasks.add_task(run, request) # start expensive run(request) method in background. Let endpoint resolve without waiting on that task.
+        # start expensive run(request) method in background. Let endpoint resolve without waiting on that task.
+        background_tasks.add_task(run, request)
         email_service.prevent_pulling_emails(request)
         print('Pulling new emails')
     else:

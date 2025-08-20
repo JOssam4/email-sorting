@@ -2,11 +2,11 @@ import asyncio
 from datetime import timedelta
 from typing import Iterable, Generator
 from fastapi import Request, HTTPException
-from src.model.Email import Email, EmailIdAndPriority
-from src.model.Secrets import Secrets
-from src.services.EmailRetrieverService import EmailRetriever
-from src.services.MySqlConnectorService import MySqlConnector
-from src.services.EmailAnalyzerService import EmailAnalyzer
+from src.model.email import Email, EmailIdAndPriority
+from src.model.secrets import Secrets
+from src.services.email_retriever_service import EmailRetriever
+from src.services.mysql_connector_service import MySqlConnector
+from src.services.email_analyzer_service import EmailAnalyzer
 from redis import Redis
 from itsdangerous import Signer, BadSignature
 

@@ -1,7 +1,9 @@
 import hashlib
 from typing import Any
+
 from mysql import connector
-from src.model.Email import Email, Priority, EmailMetadata
+
+from src.model.email import Email, Priority, EmailMetadata
 
 
 class MySqlConnector:

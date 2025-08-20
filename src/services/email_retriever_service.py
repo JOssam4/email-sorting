@@ -1,12 +1,14 @@
 import base64
 import json
 from datetime import datetime
+from enum import StrEnum
+from typing import Any
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from src.model.Email import Email
-from typing import Any
-from enum import StrEnum
+
+from src.model.email import Email
 
 
 class MimeType(StrEnum):
@@ -36,17 +38,20 @@ class EmailRetriever:
             # Retrieve emails in 'primary' section of inbox
             query = 'in:inbox -category:social -category:promotions'
             # TODO: remove max rows
-            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=10).execute())
+            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=10)
+                               .execute())
             emails: list[Email] = []
             if unread_messages.get('resultSizeEstimate') > 0:
                 for message in unread_messages.get('messages'):
                     msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
                     message_id = message['id']
                     link = self.__make_url_from_message_id(message_id)
-                    timestamp = msg['internalDate'] # unix-like timestamp (milliseconds from 1/1/1970)
+                    timestamp = msg['internalDate']  # unix-like timestamp (milliseconds from 1/1/1970)
                     time_sent = datetime.fromtimestamp(int(timestamp) // 1000)
-                    sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name').lower() == 'from')
-                    subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
+                    sent_from = next(header.get('value') for header in msg['payload']['headers']
+                                     if header.get('name').lower() == 'from')
+                    subject = next(header.get('value') for header in msg['payload']['headers']
+                                   if header.get('name') == 'Subject')
                     body_base64 = self.__retrieve_body(msg.get('payload'))
                     body = self.__decode_body(body_base64)
                     email = Email(message_id, link, subject, time_sent, sent_from, body, None)
@@ -64,8 +69,9 @@ class EmailRetriever:
             return payload.get('body').get('data')
 
         parts_mimetypes = [part.get('mimeType') for part in parts]
-        # desired mime type, in order: text/plain, text/html, multipart/alternative (contains plain & html), multipart/related. Images not supported (yet)
-        # TODO: support passing images from image/jpeg, image/png, image/gif mime types to OpenAI api
+        # desired mime type, in order: text/plain, text/html, multipart/alternative (contains plain & html),
+        # multipart/related. Images not supported (yet) TODO: support passing images from image/jpeg, image/png,
+        # image/gif mime types to OpenAI api
         if MimeType.TEXT_PLAIN in parts_mimetypes:
             index = parts_mimetypes.index(MimeType.TEXT_PLAIN)
             part = parts[index]

@@ -1,6 +1,8 @@
-from dataclasses import dataclass
-from dotenv import load_dotenv
 import os
+from dataclasses import dataclass
+
+from dotenv import load_dotenv
+
 
 @dataclass
 class Secrets:
@@ -9,7 +11,6 @@ class Secrets:
     call_chatgpt_api: bool
     signing_key: str
     openai_key: str
-
 
     @staticmethod
     def from_env() -> 'Secrets':

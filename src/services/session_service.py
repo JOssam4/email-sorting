@@ -1,9 +1,11 @@
 import uuid
 from datetime import timedelta
+
 from fastapi import Request, Response, HTTPException
 from itsdangerous import Signer, BadSignature
-from src.model.Secrets import Secrets
 from redis import Redis
+
+from src.model.secrets import Secrets
 
 secrets = Secrets.from_env()
 SIGNING_KEY = secrets.signing_key
