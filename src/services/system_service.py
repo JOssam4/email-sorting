@@ -32,15 +32,20 @@ async def run(request: Request) -> None:
     call_chatgpt_api = secrets.call_chatgpt_api
     credentials_json = session_service.retrieve_credentials(request)
     username, emails = email_service.fetch_emails(credentials_json)
+
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        mysql_connector.sync_emails_to_db_with_deletion(emails)
+        all_gmail_ids = mysql_connector.get_all_gmail_ids()
+        mysql_connector.sync_emails_to_db(emails)
+    gmail_ids_to_remove_from_db = await email_service.find_ids_of_emails_to_remove_from_db(all_gmail_ids)
+    with MySqlConnector(mysql_password, username) as mysql_connector:
+        mysql_connector.remove_emails_from_db(list(gmail_ids_to_remove_from_db))
     emails_needing_priority = email_service.get_emails_needing_priority(mysql_password, username, emails)
     if call_chatgpt_api:
         emails_to_update = await email_service.evaluate_email_priorities(emails_needing_priority)
     else:
         emails_to_update = []
     with MySqlConnector(mysql_password, username) as mysql_connector:
-        mysql_connector.sync_emails_to_db_without_deletion(emails_to_update)
+        mysql_connector.sync_emails_to_db(emails_to_update)
 
 
 async def remove_trailing_slash(request: Request, call_next: Callable) -> RedirectResponse | Any:

@@ -49,3 +49,9 @@ class EmailMetadata:
 class EmailIdAndPriority:
     gmail_id: str
     priority: Optional[Priority]
+
+
+@dataclass
+class EmailIdAndExistence:
+    gmail_id: str
+    exists: bool

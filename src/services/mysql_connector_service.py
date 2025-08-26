@@ -54,12 +54,24 @@ class MySqlConnector:
             results = cursor.fetchall()
         return {row[0] for row in results}
 
-    def retrieve_emails(self, select_fields: set[str] = None) -> list[Any]:
+    def get_all_gmail_ids(self) -> set[str]:
+        """
+        Retrieves all gmail_ids from table
+        """
+        if not self.mydb.is_connected():
+            raise ConnectionError('Connection to MySql closed')
+
+        query = "SELECT gmail_id FROM emails"
+        with self.mydb.cursor() as cursor:
+            cursor.execute(query)
+            results = cursor.fetchall()
+        return {row[0] for row in results}
+
+    def retrieve_emails(self) -> list[Any]:
         if not self.mydb.is_connected():
             raise ConnectionError('Connection to MySql closed')
         with self.mydb.cursor() as cursor:
-            selected_fields = '*' if select_fields is None or len(select_fields) == 0 else ', '.join(select_fields)
-            cursor.execute(f"SELECT {selected_fields} FROM emails")
+            cursor.execute(f"SELECT * FROM emails")
             results = cursor.fetchall()
         emails = [EmailMetadata(email_row[1], email_row[2], email_row[3], email_row[4], email_row[5], email_row[6])
                   for email_row in results]
@@ -78,7 +90,7 @@ class MySqlConnector:
                   for email_row in results]
         return emails
 
-    def sync_emails_to_db_without_deletion(self, emails: list[Email]) -> None:
+    def sync_emails_to_db(self, emails: list[Email]) -> None:
         """
         Insert new emails and update the priority for existing ones.
         Emails are matched by gmail_id (which must be unique).
@@ -99,19 +111,6 @@ class MySqlConnector:
         with self.mydb.cursor() as cursor:
             cursor.executemany(sql, data)
         self.mydb.commit()
-
-    def sync_emails_to_db_with_deletion(self, emails: list[Email]) -> None:
-        """
-        Insert new emails, update the priority for existing ones, and delete old emails.
-        Emails are matched by gmail_id (which must be unique).
-        """
-        self.sync_emails_to_db_without_deletion(emails)
-        existing_gmail_ids = {gmail_id for gmail_id in self.retrieve_gmail_ids_of_all_emails()}
-        new_or_updated_gmail_ids = {email.gmail_id for email in emails}
-        email_ids_to_delete = existing_gmail_ids - new_or_updated_gmail_ids
-        self.remove_emails_from_db(list(email_ids_to_delete))
-
-        print('finished syncing emails to database')
 
     def remove_emails_from_db(self, email_ids: list[str]) -> None:
         if len(email_ids) == 0:

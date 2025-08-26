@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 from datetime import datetime
@@ -8,7 +9,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from src.model.email import Email
+from src.model.email import Email, EmailIdAndExistence
 
 
 class MimeType(StrEnum):
@@ -22,6 +23,7 @@ class EmailRetriever:
     def __init__(self, credentials_json: str, scopes: list[str]):
         credentials_dict = json.loads(credentials_json)
         self.creds = Credentials.from_authorized_user_info(credentials_dict, scopes)
+        self.semaphore = asyncio.Semaphore(5)
 
     def retrieve_username(self) -> str:
         """
@@ -62,6 +64,18 @@ class EmailRetriever:
             # TODO(developer) - Handle errors from gmail API.
             print(f"An error occurred: {error}")
             return []
+
+    async def email_exists(self, message_id: str) -> EmailIdAndExistence:
+        service = build("gmail", "v1", credentials=self.creds)
+        try:
+            async with self.semaphore:
+                message = service.users().messages().get(userId='me', id=message_id).execute()
+            label_ids = message.get('labelIds')
+            ret = 'UNREAD' in label_ids and 'TRASH' not in label_ids
+            return EmailIdAndExistence(message_id, ret)
+        except HttpError:
+            print(f'Error retrieving email {message_id}. It was probably deleted.')
+            return EmailIdAndExistence(message_id, False)
 
     def __retrieve_body(self, payload) -> Any:
         parts: list[Any] | None = payload.get('parts', None)
