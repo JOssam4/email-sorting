@@ -1,12 +1,15 @@
+import asyncio
 import base64
 import json
 from datetime import datetime
+from enum import StrEnum
+from typing import Any
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from Email import Email
-from typing import Any
-from enum import StrEnum
+
+from src.model.email import Email, EmailIdAndExistence
 
 
 class MimeType(StrEnum):
@@ -20,6 +23,7 @@ class EmailRetriever:
     def __init__(self, credentials_json: str, scopes: list[str]):
         credentials_dict = json.loads(credentials_json)
         self.creds = Credentials.from_authorized_user_info(credentials_dict, scopes)
+        self.semaphore = asyncio.Semaphore(5)
 
     def retrieve_username(self) -> str:
         """
@@ -36,20 +40,23 @@ class EmailRetriever:
             # Retrieve emails in 'primary' section of inbox
             query = 'in:inbox -category:social -category:promotions'
             # TODO: remove max rows
-            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=3).execute())
+            unread_messages = (service.users().messages().list(userId='me', labelIds=['UNREAD'], q=query, maxResults=10)
+                               .execute())
             emails: list[Email] = []
             if unread_messages.get('resultSizeEstimate') > 0:
                 for message in unread_messages.get('messages'):
                     msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
                     message_id = message['id']
                     link = self.__make_url_from_message_id(message_id)
-                    timestamp = msg['internalDate'] # unix-like timestamp (milliseconds from 1/1/1970)
+                    timestamp = msg['internalDate']  # unix-like timestamp (milliseconds from 1/1/1970)
                     time_sent = datetime.fromtimestamp(int(timestamp) // 1000)
-                    sent_from = next(header.get('value') for header in msg['payload']['headers'] if header.get('name').lower() == 'from')
-                    subject = next(header.get('value') for header in msg['payload']['headers'] if header.get('name') == 'Subject')
+                    sent_from = next(header.get('value') for header in msg['payload']['headers']
+                                     if header.get('name').lower() == 'from')
+                    subject = next(header.get('value') for header in msg['payload']['headers']
+                                   if header.get('name') == 'Subject')
                     body_base64 = self.__retrieve_body(msg.get('payload'))
                     body = self.__decode_body(body_base64)
-                    email = Email(message_id, link, time_sent, sent_from, subject, body, None)
+                    email = Email(message_id, link, subject, time_sent, sent_from, body, None)
                     emails.append(email)
             return emails
 
@@ -58,14 +65,27 @@ class EmailRetriever:
             print(f"An error occurred: {error}")
             return []
 
+    async def email_exists(self, message_id: str) -> EmailIdAndExistence:
+        service = build("gmail", "v1", credentials=self.creds)
+        try:
+            async with self.semaphore:
+                message = service.users().messages().get(userId='me', id=message_id).execute()
+            label_ids = message.get('labelIds')
+            ret = 'UNREAD' in label_ids and 'TRASH' not in label_ids
+            return EmailIdAndExistence(message_id, ret)
+        except HttpError:
+            print(f'Error retrieving email {message_id}. It was probably deleted.')
+            return EmailIdAndExistence(message_id, False)
+
     def __retrieve_body(self, payload) -> Any:
         parts: list[Any] | None = payload.get('parts', None)
         if parts is None:
             return payload.get('body').get('data')
 
         parts_mimetypes = [part.get('mimeType') for part in parts]
-        # desired mime type, in order: text/plain, text/html, multipart/alternative (contains plain & html), multipart/related. Images not supported (yet)
-        # TODO: support passing images from image/jpeg, image/png, image/gif mime types to OpenAI api
+        # desired mime type, in order: text/plain, text/html, multipart/alternative (contains plain & html),
+        # multipart/related. Images not supported (yet) TODO: support passing images from image/jpeg, image/png,
+        # image/gif mime types to OpenAI api
         if MimeType.TEXT_PLAIN in parts_mimetypes:
             index = parts_mimetypes.index(MimeType.TEXT_PLAIN)
             part = parts[index]

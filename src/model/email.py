@@ -10,28 +10,27 @@ class Priority(StrEnum):
     HIGH = 'high'
 
 
-@dataclass()
+@dataclass
 class Email:
     gmail_id: str
     link: str
+    subject: str
     time_sent: datetime
     sent_from: str
-    subject: str
     body: str
     priority: Optional[Priority]
-
 
     def __repr__(self):
         return f'Email(time_sent={self.time_sent}, sent_from={self.sent_from}, subject={self.subject}, body=...)'
 
 
-@dataclass()
+@dataclass
 class EmailMetadata:
     gmail_id: str
     link: str
+    subject: str
     time_sent: datetime
     sent_from: str
-    subject: str
     priority: Optional[Priority]
 
     @classmethod
@@ -44,3 +43,15 @@ class EmailMetadata:
             subject=email.subject,
             priority=email.priority,
         )
+
+
+@dataclass
+class EmailIdAndPriority:
+    gmail_id: str
+    priority: Optional[Priority]
+
+
+@dataclass
+class EmailIdAndExistence:
+    gmail_id: str
+    exists: bool
